@@ -1,140 +1,242 @@
-// Enhanced authentication service
+import { supabase } from '../lib/supabase';
+
 class AuthService {
   constructor() {
-    this.ADMIN_KEY = 'adminUser';
-    this.AUTH_KEY = 'authToken';
+    this.supabase = supabase;
   }
 
-  async login(username, password) {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Get admin user from localStorage
-    const savedAdmin = localStorage.getItem(this.ADMIN_KEY);
-    
-    if (!savedAdmin) {
-      return { success: false, error: 'No admin account found. Please create one first.' };
-    }
-
+  // Check if admin exists
+  async checkAdminExists() {
     try {
-      const adminUser = JSON.parse(savedAdmin);
-      
-      if (username === adminUser.username) {
-        // Verify password
-        const isValidPassword = await this.verifyPassword(password, adminUser.password);
-        
-        if (isValidPassword) {
-          const token = this.generateToken();
-          const userData = {
-            username: adminUser.username,
-            role: 'admin'
-          };
-          return { success: true, user: userData, token };
-        }
-      }
-      
-      return { success: false, error: 'Invalid credentials' };
+      const { data, error } = await this.supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'admin')
+        .limit(1);
+
+      if (error) throw error;
+
+      return {
+        success: true,
+        exists: data.length > 0,
+        message: data.length > 0 ? 'Admin exists' : 'No admin found'
+      };
     } catch (error) {
-      return { success: false, error: 'Login failed. Please try again.' };
+      console.error('Auth error:', error);
+      return {
+        success: false,
+        message: error.message
+      };
     }
   }
 
+  // Register new user WITHOUT email
   async register(username, password) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Validate input
-    if (!username || !password) {
-      return { success: false, error: 'Username and password are required' };
-    }
-
-    if (username.length < 3) {
-      return { success: false, error: 'Username must be at least 3 characters long' };
-    }
-
-    if (password.length < 6) {
-      return { success: false, error: 'Password must be at least 6 characters long' };
-    }
-
     try {
-      // Check if admin already exists
-      const existingAdmin = localStorage.getItem(this.ADMIN_KEY);
-      if (existingAdmin) {
-        const existingUser = JSON.parse(existingAdmin);
-        return { 
-          success: false, 
-          error: `Admin user '${existingUser.username}' already exists. Please login instead.` 
+      // Generate a unique ID for the user
+      const userId = this.generateUserId();
+      
+      // Create user record directly in users table (skip Supabase Auth)
+      const { data, error } = await this.supabase
+        .from('users')
+        .insert([
+          {
+            id: userId,
+            username: username,
+            password_hash: this.hashPassword(password), // Store hashed password
+            role: 'user',
+            created_at: new Date().toISOString()
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Generate a simple token (for demo purposes - in production use JWT)
+      const token = this.generateToken(userId, username);
+
+      return {
+        success: true,
+        data: {
+          user: {
+            id: data.id,
+            username: data.username,
+            role: data.role
+          },
+          token: token
+        },
+        message: 'Registration successful'
+      };
+    } catch (error) {
+      console.error('Registration error:', error);
+      return {
+        success: false,
+        message: error.message || 'Registration failed'
+      };
+    }
+  }
+
+  // Login user
+  async login(username, password) {
+    try {
+      // Find user by username and check password
+      const { data: userData, error: userError } = await this.supabase
+        .from('users')
+        .select('*')
+        .eq('username', username)
+        .single();
+
+      if (userError || !userData) {
+        return {
+          success: false,
+          message: 'Invalid username or password'
         };
       }
 
-      // Hash password
-      const hashedPassword = await this.hashPassword(password);
+      // Check password (in production, use proper password verification)
+      const passwordValid = this.verifyPassword(password, userData.password_hash);
       
-      const adminUser = {
-        username: username.trim(),
-        password: hashedPassword,
-        createdAt: new Date().toISOString()
-      };
-      
-      // Save to localStorage
-      localStorage.setItem(this.ADMIN_KEY, JSON.stringify(adminUser));
-      
-      // Generate token and login immediately
-      const token = this.generateToken();
-      const userData = {
-        username: adminUser.username,
-        role: 'admin'
-      };
-      
-      console.log('Admin account created successfully:', username);
-      return { success: true, user: userData, token };
-    } catch (error) {
-      console.error('Registration error:', error);
-      return { success: false, error: 'Registration failed. Please try again.' };
-    }
-  }
-
-  async hashPassword(password) {
-    // Simple hash simulation - in a real app, use proper bcrypt
-    // This is just for demo purposes
-    const simpleHash = btoa(password).repeat(2);
-    return `demo_hash_${simpleHash}`;
-  }
-
-  async verifyPassword(password, hashedPassword) {
-    // Simple verification - in a real app, use proper bcrypt comparison
-    // This is just for demo purposes
-    const testHash = await this.hashPassword(password);
-    return testHash === hashedPassword;
-  }
-
-  generateToken() {
-    // Generate simple token (in real app, use JWT with proper signing)
-    return `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  validateToken(token) {
-    return !!token && token.startsWith('auth_token_');
-  }
-
-  // Check if admin user exists
-  hasAdminUser() {
-    return !!localStorage.getItem(this.ADMIN_KEY);
-  }
-
-  // Get admin user info (without password)
-  getAdminInfo() {
-    try {
-      const adminData = localStorage.getItem(this.ADMIN_KEY);
-      if (adminData) {
-        const { password, ...adminInfo } = JSON.parse(adminData);
-        return adminInfo;
+      if (!passwordValid) {
+        return {
+          success: false,
+          message: 'Invalid username or password'
+        };
       }
-      return null;
+
+      // Update last login time
+      await this.supabase
+        .from('users')
+        .update({ last_login: new Date().toISOString() })
+        .eq('id', userData.id);
+
+      // Generate token
+      const token = this.generateToken(userData.id, userData.username);
+
+      return {
+        success: true,
+        data: {
+          user: {
+            id: userData.id,
+            username: userData.username,
+            role: userData.role
+          },
+          token: token
+        },
+        message: 'Login successful'
+      };
+    } catch (error) {
+      console.error('Login error:', error);
+      return {
+        success: false,
+        message: error.message || 'Login failed'
+      };
+    }
+  }
+
+  // Get current user
+  async getCurrentUser(token) {
+    try {
+      // Decode token to get user info
+      const userInfo = this.decodeToken(token);
+      
+      if (!userInfo) {
+        throw new Error('Invalid token');
+      }
+
+      // Get user from database
+      const { data: userData, error } = await this.supabase
+        .from('users')
+        .select('*')
+        .eq('id', userInfo.userId)
+        .single();
+
+      if (error) throw error;
+
+      return {
+        success: true,
+        data: {
+          user: {
+            id: userData.id,
+            username: userData.username,
+            role: userData.role
+          }
+        }
+      };
+    } catch (error) {
+      console.error('Get current user error:', error);
+      return {
+        success: false,
+        message: error.message
+      };
+    }
+  }
+
+  // Simple password hashing (for demo - use bcrypt in production)
+  hashPassword(password) {
+    // Simple hash for demo - REPLACE WITH PROPER HASHING IN PRODUCTION
+    return btoa(password); // Base64 encoding (not secure for production!)
+  }
+
+  // Verify password
+  verifyPassword(password, hash) {
+    // Simple verification for demo - REPLACE WITH PROPER VERIFICATION IN PRODUCTION
+    return btoa(password) === hash;
+  }
+
+  // Generate simple token (for demo - use JWT in production)
+  generateToken(userId, username) {
+    const tokenData = {
+      userId: userId,
+      username: username,
+      timestamp: Date.now()
+    };
+    return btoa(JSON.stringify(tokenData)); // Base64 encoding (not secure for production!)
+  }
+
+  // Decode token
+  decodeToken(token) {
+    try {
+      const decoded = atob(token);
+      return JSON.parse(decoded);
     } catch (error) {
       return null;
     }
+  }
+
+  // Generate unique user ID
+  generateUserId() {
+    return 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  }
+
+  // Store token in localStorage
+  setToken(token) {
+    localStorage.setItem('authToken', token);
+  }
+
+  // Get token from localStorage
+  getToken() {
+    return localStorage.getItem('authToken');
+  }
+
+  // Remove token from localStorage
+  removeToken() {
+    localStorage.removeItem('authToken');
+  }
+
+  // Check if user is authenticated
+  isAuthenticated() {
+    const token = this.getToken();
+    if (!token) return false;
+    
+    // Check if token is valid (not expired)
+    const userInfo = this.decodeToken(token);
+    if (!userInfo) return false;
+    
+    // Check if token is older than 24 hours (for demo)
+    const tokenAge = Date.now() - userInfo.timestamp;
+    return tokenAge < 24 * 60 * 60 * 1000; // 24 hours
   }
 }
 
-// Export a singleton instance
-export const authService = new AuthService();
+export default new AuthService();

@@ -1,39 +1,73 @@
+// src/components/Navigation.js
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import './Navigation.css';
 
 const Navigation = () => {
-  const { user, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
+  if (!user) {
+    return null; // Don't show navigation when not logged in
+  }
+
   return (
-    <nav className="navigation">
-      <div className="nav-brand">
-        <Link to="/">Scrap Tracker</Link>
-      </div>
-      
-      <div className="nav-links">
-        {user ? (
-          <>
-            <Link to="/">Daily Record</Link>
-            <Link to="/history">History</Link>
-            <Link to="/dashboard">Dashboard</Link>
+    <nav className="navbar">
+      <div className="nav-container">
+        <div className="nav-brand">
+          <div className="nav-logo-icon">⚡</div>
+          <h1 className="nav-logo">Malan XAS Scrap Metals</h1>
+        </div>
+        
+        <ul className="nav-menu">
+          <li className="nav-item">
+            <Link 
+              to="/" 
+              className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
+            >
+              <span className="nav-icon">📝</span>
+              <span className="nav-text">Daily Record</span>
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link 
+              to="/history" 
+              className={`nav-link ${location.pathname === '/history' ? 'active' : ''}`}
+            >
+              <span className="nav-icon">📊</span>
+              <span className="nav-text">History</span>
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link 
+              to="/dashboard" 
+              className={`nav-link ${location.pathname === '/dashboard' ? 'active' : ''}`}
+            >
+              <span className="nav-icon">📈</span>
+              <span className="nav-text">Dashboard</span>
+            </Link>
+          </li>
+          <li className="nav-item user-menu">
             <div className="user-info">
-              <span>Welcome, {user.username}</span>
-              <button onClick={handleLogout} className="logout-btn">
-                Logout
-              </button>
+              <span className="user-avatar">🙍‍♂️</span>
+              <span className="username">{user.username}</span>
             </div>
-          </>
-        ) : (
-          <Link to="/login">Login</Link>
-        )}
+            <button 
+              onClick={handleLogout}
+              className="logout-btn"
+              title="Logout"
+            >
+              <span className="logout-icon">🚪</span>
+              <span className="logout-text">Logout</span>
+            </button>
+          </li>
+        </ul>
       </div>
     </nav>
   );

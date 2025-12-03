@@ -1,9 +1,10 @@
+// src/components/Register.js
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { authService } from '../services/auth';
+import authService from '../services/auth';
 import './Auth.css';
 
-const Register = ({ onSwitchToLogin }) => {
+const Register = () => {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -42,12 +43,15 @@ const Register = ({ onSwitchToLogin }) => {
       const result = await authService.register(formData.username, formData.password);
       
       if (result.success) {
-        login(result.user, result.token);
+        // Store token
+        authService.setToken(result.data.token);
+        // Login to context
+        login(result.data.user, result.data.token);
       } else {
-        setError(result.error);
+        setError(result.message);
       }
     } catch (err) {
-      setError('Registration failed. Please try again.');
+      setError(err.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -56,7 +60,7 @@ const Register = ({ onSwitchToLogin }) => {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h2>Create Admin Account</h2>
+        <h2>Create Account</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="username">Username</label>
@@ -68,6 +72,7 @@ const Register = ({ onSwitchToLogin }) => {
               onChange={handleChange}
               required
               disabled={loading}
+              placeholder="Enter username"
             />
           </div>
           
@@ -81,6 +86,7 @@ const Register = ({ onSwitchToLogin }) => {
               onChange={handleChange}
               required
               disabled={loading}
+              placeholder="Enter password (min 6 characters)"
             />
           </div>
 
@@ -94,6 +100,7 @@ const Register = ({ onSwitchToLogin }) => {
               onChange={handleChange}
               required
               disabled={loading}
+              placeholder="Confirm password"
             />
           </div>
 
@@ -113,7 +120,7 @@ const Register = ({ onSwitchToLogin }) => {
           <button 
             type="button" 
             className="switch-button"
-            onClick={onSwitchToLogin}
+            onClick={() => window.location.href = '/login'}
           >
             Login
           </button>

@@ -1,10 +1,10 @@
-// src/components/Login.js - Updated
+// src/components/Login.js
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { authService } from '../services/auth';
+import authService from '../services/auth';
 import './Auth.css';
 
-const Login = ({ onSwitchToRegister }) => {
+const Login = () => {
   const [formData, setFormData] = useState({
     username: '',
     password: ''
@@ -16,12 +16,20 @@ const Login = ({ onSwitchToRegister }) => {
 
   useEffect(() => {
     // Check if admin exists and show appropriate message
-    const adminExists = authService.hasAdminUser();
-    if (!adminExists) {
-      setInfo('No admin account found. Redirecting to registration...');
-      setTimeout(() => onSwitchToRegister(), 2000);
-    }
-  }, [onSwitchToRegister]);
+    const checkAdmin = async () => {
+      try {
+        const response = await authService.checkAdminExists();
+        if (!response.data.hasAdmin) {
+          setInfo('No admin account found. Please register first.');
+        }
+      } catch (err) {
+        console.error('Error checking admin status:', err);
+        // Continue with login form
+      }
+    };
+
+    checkAdmin();
+  }, []);
 
   const handleChange = (e) => {
     setFormData({
@@ -47,33 +55,29 @@ const Login = ({ onSwitchToRegister }) => {
       const result = await authService.login(formData.username, formData.password);
       
       if (result.success) {
-        console.log('Login successful, user:', result.user);
-        login(result.user, result.token);
+        console.log('Login successful, user:', result.data.user);
+        // Store token
+        authService.setToken(result.data.token);
+        // Login to context
+        login(result.data.user, result.data.token);
       } else {
-        setError(result.error || 'Invalid credentials');
+        setError(result.message || 'Invalid credentials');
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError('Login failed. Please try again.');
+      setError(err.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (info) {
-    return (
-      <div className="auth-container">
-        <div className="auth-card">
-          <div className="info-message">{info}</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h2>Admin Login</h2>
+        <h2>MAL XAS Login</h2>
+        
+        {info && <div className="info-message">{info}</div>}
+        
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="username">Username</label>
@@ -85,7 +89,7 @@ const Login = ({ onSwitchToRegister }) => {
               onChange={handleChange}
               required
               disabled={loading}
-              placeholder="Enter admin username"
+              placeholder="Enter username"
             />
           </div>
           
@@ -115,13 +119,13 @@ const Login = ({ onSwitchToRegister }) => {
         </form>
 
         <div className="auth-switch">
-          <p>Need to create an admin account? </p>
+          <p>Don't have an account? </p>
           <button 
             type="button" 
             className="switch-button"
-            onClick={onSwitchToRegister}
+            onClick={() => window.location.href = '/register'}
           >
-            Create Admin Account
+            Create Account
           </button>
         </div>
       </div>
